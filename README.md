@@ -282,6 +282,20 @@ The final argument is simply the host. By default it will hit http:// protocol i
 ``` ab -k -c 350 -n 20000 <worpress URL> ```
 
 
+#### Cleanup
+Use the following commands to delete resources created during this task:
+
+```
+aws application-autoscaling delete-scaling-policy --policy-name cpu75-target-tracking-scaling-policy --service-namespace ecs --resource-id service/${WOF_ECS_CLUSTER_NAME}/wof-efs-rw-service  --scalable-dimension ecs:service:DesiredCount --region $WOF_AWS_REGION 
+aws application-autoscaling deregister-scalable-target --service-namespace ecs --resource-id service/${WOF_ECS_CLUSTER_NAME}/wof-efs-rw-service  --scalable-dimension ecs:service:DesiredCount --region $WOF_AWS_REGION
+aws ecs delete-service --service wof-efs-rw-service --cluster $WOF_ECS_CLUSTER_NAME --region $WOF_AWS_REGION --force 
+aws ec2 revoke-security-group-ingress --group-id $WOF_SVC_SG_ID --region $WOF_AWS_REGION --protocol tcp --port 8080 --source-group $WOF_ALB_SG_ID 
+aws ec2 delete-security-group --group-id $WOF_SVC_SG_ID --region $WOF_AWS_REGION 
+aws ecs delete-cluster --cluster $WOF_ECS_CLUSTER_NAME --region $WOF_AWS_REGION
+aws cloudformation delete-stack --stack-name $WOF_CFN_STACK_NAME --region $WOF_AWS_REGION
+```
+
+
 
 [//]: #
    [AWS CLI version 2]: <https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html>
