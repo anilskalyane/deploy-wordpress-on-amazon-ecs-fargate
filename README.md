@@ -197,6 +197,91 @@ echo "http://$(aws elbv2 describe-load-balancers \
 
 The admin username is `user` and the password is `bitnami`. Please change the password as soon as possible.
 
+#### Test data persistence
+Now that the WordPress installation is complete, it’s time to test data persistence. While in your WordPress admin dashboard, make a site configuration change like activating a new site theme. Once you’ve made the change, terminate all WordPress containers:
+
+```
+aws ecs update-service \
+  --cluster $WOF_ECS_CLUSTER_NAME \
+  --region $WOF_AWS_REGION \
+  --service wof-efs-rw-service \
+  --task-definition "$WOF_TASK_DEFINITION_ARN" \
+  --desired-count 0 
+```
+
+Wait until there are no active replicas. You can use watch to get the replica count:
+
+```
+watch aws ecs describe-services \
+  --services wof-efs-rw-service \
+  --cluster $WOF_ECS_CLUSTER_NAME \
+  --region $WOF_AWS_REGION \
+  --query 'services[].runningCount'
+```
+
+Once all tasks have been terminated, scale the service back to a minimum of three replicas:
+
+```
+aws ecs update-service \
+  --cluster $WOF_ECS_CLUSTER_NAME \
+  --region $WOF_AWS_REGION \
+  --service wof-efs-rw-service \
+  --task-definition "$WOF_TASK_DEFINITION_ARN" \
+  --desired-count 2
+```
+
+When the tasks are running, go to the WordPress admin dashboard, and verify that your changes have persisted.
+
+#### Service Auto Scaling
+ECS Service Auto Scaling helps you maintain the level of performance for your application as its load waxes and wanes.
+
+Here’s an example that demonstrates setting Service Auto Scaling for WordPress. First, we’ll register the WordPress ECS service with Application Auto Scaling, then we’ll create a policy that automatically adjusts the task replica count based on the service’s average CPU utilization.
+
+###### Register the ECS service with Application Auto Scaling:
+
+```
+aws application-autoscaling \
+  register-scalable-target \
+  --region $WOF_AWS_REGION \
+  --service-namespace ecs \
+  --resource-id service/${WOF_ECS_CLUSTER_NAME}/wof-efs-rw-service \
+  --scalable-dimension ecs:service:DesiredCount \
+  --min-capacity 2 \
+  --max-capacity 4
+```
+
+##### Configure Application Auto Scaling policy:
+
+```
+aws application-autoscaling put-scaling-policy \
+  --service-namespace ecs \
+  --scalable-dimension ecs:service:DesiredCount \
+  --resource-id service/${WOF_ECS_CLUSTER_NAME}/wof-efs-rw-service \
+  --policy-name cpu75-target-tracking-scaling-policy \
+  --policy-type TargetTrackingScaling \
+  --region $WOF_AWS_REGION \
+  --target-tracking-scaling-policy-configuration file://scaling.config.json
+```
+
+When the WordPress service’s average CPU utilization rises above 75%, a scale-out alarm triggers Service Auto Scaling to add another task to the WordPress service to decrease the load on the running tasks and ensure that users don’t experience a service disruption. Conversely, when the average CPU utilization dips below 75%, a scale-in alarm triggers a decrease in the service’s desired count.
+
+Now, you can use any utility generate load, and test the auto scaling configuration:
+
+Here i'm using the apache benchmark tool, and while it will give you a solid idea of some performance, it is a bad idea to only depend on it if you plan to have your site exposed to serious stress in production.
+
+Having said that, here's the most common and simplest parameters:
+
+- -c: ("Concurrency"). Indicates how many clients (people/users) will be hitting the site at the same time. While ab runs, there will be -c clients hitting the site. This is what actually decides the amount of stress your site will suffer during the benchmark.
+
+- -n: Indicates how many requests are going to be made. This just decides the length of the benchmark. A high -n value with a -c value that your server can support is a good idea to ensure that things don't break under sustained stress: it's not the same to support stress for 5 seconds than for 5 hours.
+
+- -k: This does the "KeepAlive" funcionality browsers do by nature. You don't need to pass a value for -k as it it "boolean" (meaning: it indicates that you desire for your test to use the Keep Alive header from HTTP and sustain the connection). Since browsers do this and you're likely to want to simulate the stress and flow that your site will have from browsers, it is recommended you do a benchmark with this.
+
+The final argument is simply the host. By default it will hit http:// protocol if you don't specify it.
+
+``` ab -k -c 350 -n 20000 <worpress URL> ```
+
+
 
 [//]: #
    [AWS CLI version 2]: <https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html>
