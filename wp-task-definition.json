@@ -1,0 +1,71 @@
+{   "networkMode": "awsvpc", 
+    "containerDefinitions": [
+        {
+            
+            "portMappings": [
+                {
+                    "containerPort": 8080,
+                    "protocol": "tcp"
+                }
+            ],
+            "essential": true,
+            "mountPoints": [
+                {
+                    "containerPath": "/bitnami/wordpress",
+                    "sourceVolume": "wordpress"
+                }
+            ],
+            "name": "wordpress",
+            "image": "bitnami/wordpress",
+            "environment": [
+                {
+                    "name": "MARIADB_HOST",
+                    "value": "${WOF_RDS_ENDPOINT}"
+                },
+                {   
+                    "name": "WORDPRESS_DATABASE_USER",
+                    "value": "admin"
+                },
+                {   
+                    "name": "WORDPRESS_DATABASE_PASSWORD",
+                    "value": "supersecretpassword"
+                },
+                {   
+                    "name": "WORDPRESS_DATABASE_NAME",
+                    "value": "wordpress"
+                },
+                {   
+                    "name": "PHP_MEMORY_LIMIT",
+                    "value": "512M"
+                },
+                {   
+                    "name": "enabled",
+                    "value": "false"
+                },
+                {   
+                    "name": "ALLOW_EMPTY_PASSWORD",
+                    "value": "yes"
+                }
+            ]
+        }
+    ],
+    "requiresCompatibilities": [ 
+        "FARGATE" 
+    ],
+    "cpu": "1024", 
+    "memory": "3072", 
+    "volumes": [
+        {
+            "name": "wordpress",
+            "efsVolumeConfiguration": {
+                "fileSystemId": "${WOF_EFS_FS_ID}",
+                "transitEncryption": "ENABLED",
+                "authorizationConfig": {
+                    "accessPointId": "${WOF_EFS_AP}",
+                    "iam": "DISABLED"
+                }
+            }
+        }
+    ],
+    "family": "wof-task"
+}

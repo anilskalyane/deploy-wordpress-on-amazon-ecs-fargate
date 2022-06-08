@@ -108,7 +108,26 @@ Note that the RDS MySQL instance this stack creates is a single point of failure
 
 You can further boost the performance of your WordPress sites by using a caching layer (like ElastiCache for Memcached) and a content delivery network like Amazon CloudFront. *We will cover this later*
 
+#### Task definition
+Now that we have created the network, database, and shared storage, we are ready to deploy WordPress. We’ll use the [bitnami/wordpress] container image to create tasks. The task definition includes database credentials.
+
+The WordPress container image is configured to store data at `/bitnami/wordpress`. As evident in the task definition above, the container mounts the EFS file system at `/bitnami/wordpress` on the container’s file system.
+
+We also use an access point to access the EFS file system. EFS access points are application-specific entry points into an EFS file system that make it easier to manage application access to shared datasets. Access points can enforce a user identity, including the user’s POSIX groups, for all file system requests that are made through the access point. They can also enforce a different root directory for the file system so that clients can only access data in the specified directory or its sub-directories.
+
+When running multiple WordPress installations, you can use a single EFS file system to persist data for multiple sites and isolate data by using an access point for each site.
+
+Register the task definition:
+
+```
+WOF_TASK_DEFINITION_ARN=$(aws ecs register-task-definition \
+--cli-input-json file://wp-task-definition.json \
+--region $WOF_AWS_REGION \
+--query taskDefinition.taskDefinitionArn --output text)
+```
+
 
 [//]: #
    [AWS CLI version 2]: <https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html>
    [AWS Management Console]: <https://console.aws.amazon.com/cloudformation/home>
+   [bitnami/wordpress]: <https://hub.docker.com/r/bitnami/wordpress/dockerfile/>
