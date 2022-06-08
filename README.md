@@ -127,6 +127,77 @@ WOF_TASK_DEFINITION_ARN=$(aws ecs register-task-definition \
 ```
 
 
+
+#### Run WordPress
+we’ll create an ECS cluster to run WordPress and create an ECS service that maintains two WordPress replicas for high availability. It also integrates with the ALB and automatically updates ALB targets as WordPress tasks are created and destroyed.
+
+##### Create an ECS cluster:
+
+```
+aws ecs create-cluster \
+  --cluster-name $WOF_ECS_CLUSTER_NAME \
+  --region $WOF_AWS_REGION
+```
+
+###### Create a security group that accepts traffic on port 8080 from the ALB’s security group:
+
+```
+WOF_SVC_SG_ID=$(aws ec2 create-security-group \
+  --description Svc-WordPress-on-Fargate \
+  --group-name Svc-WordPress-on-Fargate \
+  --vpc-id $WOF_VPC_ID --region $WOF_AWS_REGION \
+  --query 'GroupId' --output text)
+```
+
+##### Accept traffic on port 8080
+
+```
+aws ec2 authorize-security-group-ingress \
+  --group-id $WOF_SVC_SG_ID --protocol tcp \
+  --port 8080 --source-group $WOF_ALB_SG_ID \
+  --region $WOF_AWS_REGION
+```
+
+##### Create an ECS service:
+
+```
+aws ecs create-service \
+  --cluster $WOF_ECS_CLUSTER_NAME \
+  --service-name wof-efs-rw-service \
+  --task-definition "${WOF_TASK_DEFINITION_ARN}" \
+  --load-balancers targetGroupArn="${WOF_TG_ARN}",containerName=wordpress,containerPort=8080 \
+  --desired-count 2 \
+  --platform-version 1.4.0 \
+  --launch-type FARGATE \
+  --deployment-configuration maximumPercent=100,minimumHealthyPercent=0 \
+  --network-configuration "awsvpcConfiguration={subnets=["$WOF_PRIVATE_SUBNET0,$WOF_PRIVATE_SUBNET1"],securityGroups=["$WOF_SVC_SG_ID"],assignPublicIp=DISABLED}"\
+  --region $WOF_AWS_REGION
+```
+
+###### Wait until there two running tasks
+
+```
+watch aws ecs describe-services \
+  --services wof-efs-rw-service \
+  --cluster $WOF_ECS_CLUSTER_NAME \
+  --region $WOF_AWS_REGION \
+  --query 'services[].runningCount' 
+```
+
+Once two tasks are running you can proceed to the next steps.
+
+#### Finally, Access WordPress admin dashboard
+Once the Fargate tasks are running, log into the WordPress admin dashboard. Obtain the dashboard address:
+
+```
+echo "http://$(aws elbv2 describe-load-balancers \
+  --names wof-load-balancer --region $WOF_AWS_REGION \
+  --query 'LoadBalancers[].DNSName' --output text)/wp-admin/"
+```
+
+The admin username is `user` and the password is `bitnami`. Please change the password as soon as possible.
+
+
 [//]: #
    [AWS CLI version 2]: <https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html>
    [AWS Management Console]: <https://console.aws.amazon.com/cloudformation/home>
